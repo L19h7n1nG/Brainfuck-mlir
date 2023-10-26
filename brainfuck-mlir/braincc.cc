@@ -37,22 +37,7 @@ void regisrtyDialects(mlir::DialectRegistry& registry) {
 }
 
 using namespace mlir::lightning::brainfuck;
-// void mlirGen(
-//         std::string_view inputs,
-//         mlir::ModuleOp& themodule,
-//         mlir::OpBuilder& builder) {
-//     // int len = inputs.size();
-//     themodule = mlir::ModuleOp::create(builder.getUnknownLoc());
-//     for (auto&& e : inputs) {
-//         switch (e) {
-//             case '+':
 
-//                 // builder.create<AddOp>()
-//             default:
-//                 break;
-//         }
-//     }
-// }
 
 int main(int argc, char** argv) {
     // mlir::registerAllPasses();
