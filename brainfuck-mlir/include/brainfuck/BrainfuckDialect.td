@@ -14,7 +14,8 @@ def Brainfuck_Dialect: Dialect {
     }];
     let cppNamespace = "::mlir::lightning::brainfuck";
 
-    // let useFoldAPI = kEmitFoldAdaptorFolder;
+
+    let useDefaultTypePrinterParser = 1;
 
 }
 

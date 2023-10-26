@@ -1,7 +1,25 @@
-#include "brainfuck/BrainfuckOps.h"
 #include "brainfuck/BrainfuckDialect.h"
+#include "brainfuck/BrainfuckOps.h"
+#include "brainfuck/BrainfuckTypes.h"
 
-#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Types.h"
+#include "mlir/Support/TypeID.h"
 
-#define GET_OP_CLASSES
-#include "brainfuck/BrainfuckOps.cpp.inc"
+#include "llvm/ADT/TypeSwitch.h"
+
+
+
+
+
+#define GET_TYPEDEF_CLASSES
+#include "brainfuck/BrainfuckOpsTypes.cpp.inc"
+
+
+using namespace mlir::lightning::brainfuck;
+
+
+
+
+
