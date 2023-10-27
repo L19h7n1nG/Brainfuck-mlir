@@ -4,6 +4,7 @@
 
 include "BrainfuckDialect.td"
 include "BrainfuckAttributes.td"
+include "mlir/IR/AttrTypeBase.td"
 
 class Brainfuck_Type<string name, string typeMnemonic>
     : TypeDef<Brainfuck_Dialect, name> {
@@ -19,9 +20,21 @@ def Brainfuck_CellType: Brainfuck_Type<"Cell", "cell"> {
 def Brainfuck_PtrType: Brainfuck_Type<"Ptr", "ptr"> {
     let summary = "The pointer type of brainfuck";
     let description = [{}];
+
+    let parameters = (ins "int":$initParam);
+
+    let builders = [
+        TypeBuilder<(ins "int":$initParam)>,
+        TypeBuilder<(ins CArg<"int", "0">:$initParam)>
+    ];
+
+    let assemblyFormat = "`<` $initParam `>`";
+
+
+
 }
 
 
-// def Brainfuck_GenericTypes
+def Brainfuck_GenericType: AnyTypeOf<[Brainfuck_CellType, Brainfuck_PtrType]>;
 
 #endif //

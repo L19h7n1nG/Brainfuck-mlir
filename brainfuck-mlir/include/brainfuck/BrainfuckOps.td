@@ -14,13 +14,31 @@ class Brainfuck_Op<string mnemonic, list<Trait> traits = []> :
 
 
 
-
 def Brainfuck_AddOp : Brainfuck_Op<"add", []> {
         let summary = "Add op";
         let arguments = (ins Brainfuck_CellType:$lhs, I<32>:$rhs);
         let results = (outs Brainfuck_CellType:$output);
+        let assemblyFormat = "$lhs `,` $rhs attr-dict `:` `(` type($lhs) `,` type($rhs) `)` `->` type($output)";
 }
 
+
+// def Brainfuck_IncOp : Brainfuck_Op<"inc", []> {
+//         let summary = "inc operator of cell";
+//         let arguments = (ins Brainfuck_CellType:$lhs, I<32>:$rhs);
+
+// }  
+
+def Brainfuck_ShiftOp : Brainfuck_Op<"shr",[]> {
+        let summary = "shifting a ptr op";
+        let arguments = (ins Brainfuck_PtrType:$lhs, I<32>:$rhs);
+        let results = (outs Brainfuck_PtrType:$output);
+        let assemblyFormat = "$lhs `,` $rhs attr-dict `:` `(` type($lhs) `,` type($rhs) `)` `->` type($output)";
+
+        let builders = [
+                OpBuilder<(ins "Value":$lhs, "Value":$rhs)>
+        ];
+
+}
 
 
 #endif //
