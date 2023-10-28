@@ -18,11 +18,14 @@
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Verifier.h"
@@ -50,42 +53,27 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
 
     auto theModule = mlir::ModuleOp::create(builder.getUnknownLoc());
 
-    auto funcType = builder.getFunctionType(std::nullopt, std::nullopt);
 
-    // auto mainfunction = builder.create<mlir::func::FuncOp>(
-    //         builder.getUnknownLoc(), "main", funcType);
+    auto cur_type = mlir::lightning::brainfuck::CellType::get(&context, 0, 0);
 
-    // theModule.push_back(mainfunction);
+    auto const_one = builder.create<mlir::arith::ConstantIntOp>(
+            builder.getUnknownLoc(), 1, 32);
+    auto const_nega_one = builder.create<mlir::arith::ConstantIntOp>(
+            builder.getUnknownLoc(), -1, 32);
+    auto cur_cell =
+            builder.create<CellOp>(builder.getUnknownLoc(), cur_type, 0, 0);
 
-    // auto entryBlock = mainfunction.addEntryBlock();
+    theModule.push_back(const_one);
+    theModule.push_back(cur_cell);
 
-    // builder.setInsertionPointToEnd(entryBlock);
+    auto new_cell = builder.create<AddOp>(builder.getUnknownLoc(), cur_type, cur_cell, const_one);
 
-    // builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
-    // builder.setInsertionPointToEnd(entryBlock);
-
-    for (auto&& ch : code) {
-        if (ch == '<') {
-            // builder.create<mlir::lightning::brainfuck::AddOp>(
-            //         builder.getUnknownLoc());
-            // auto lhsType = builder.create()
-            // mlir::Value lhs = mlir::Value::setType(builder.getI32Type());
-            mlir::Value lhs;
-            mlir::Value rhs;
-            auto        outType =
-                    mlir::lightning::brainfuck::PtrType::get(&context, 0);
-            // auto rhs =
-            auto op = builder.create<mlir::lightning::brainfuck::ShiftOp>(
-                    builder.getUnknownLoc(), outType, lhs, rhs);
-            // theModule.push_back(op);
-        }
-    }
+    theModule.push_back(new_cell);
 
     if (failed(mlir::verify(theModule))) {
         theModule.emitError("module verification error");
         return nullptr;
     }
-
     return theModule;
 }
 
@@ -95,17 +83,20 @@ int main(int argc, char** argv) {
     mlir::MLIRContext context;
     context.loadDialect<
             mlir::func::FuncDialect,
-            mlir::lightning::brainfuck::BrainfuckDialect>();
+            mlir::lightning::brainfuck::BrainfuckDialect,
+            mlir::arith::ArithDialect>();
 
     mlir::OwningOpRef<mlir::ModuleOp> module = parse_code(context, s);
 
-    module->dump();
+    if (module)
+        module->dump();
 
-    // mlir::DialectRegistry registry;
-    // regisrtyDialects<
-    //         mlir::lightning::brainfuck::BrainfuckDialect,
-    //         mlir::func::FuncDialect>(registry);
+    mlir::DialectRegistry registry;
+    regisrtyDialects<
+            mlir::lightning::brainfuck::BrainfuckDialect,
+            mlir::func::FuncDialect,
+            mlir::arith::ArithDialect>(registry);
 
-    // return mlir::asMainReturnCode(mlir::MlirOptMain(
-    //         argc, argv, "Brainfuck optimizer driver\n", registry));
+    return mlir::asMainReturnCode(mlir::MlirOptMain(
+            argc, argv, "Brainfuck optimizer driver\n", registry));
 }

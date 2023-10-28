@@ -24,8 +24,6 @@ void BrainfuckDialect::initialize() {
             >();
 }
 
-#define GET_OP_CLASSES
-#include "brainfuck/BrainfuckOps.cpp.inc"
 
 #define GET_TYPEDEF_CLASSES
 #include "brainfuck/BrainfuckOpsTypes.cpp.inc"
