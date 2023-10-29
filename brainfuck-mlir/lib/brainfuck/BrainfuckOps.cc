@@ -7,6 +7,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Async/IR/AsyncTypes.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
@@ -26,57 +27,56 @@
 using namespace mlir::lightning::brainfuck;
 
 void CellOp::build(
-        ::mlir::OpBuilder&      odsBuilder,
+        ::mlir::OpBuilder& odsBuilder,
         ::mlir::OperationState& odsState,
-        int                     pos,
-        int                     val) {
+        int pos,
+        int val) {
     auto cell_type = CellType::get(odsBuilder.getContext(), pos, val);
     odsState.addTypes(cell_type);
-
-    odsState.addAttribute(
-            "pos", odsBuilder.getIntegerAttr(odsBuilder.getI32Type(), pos));
-    odsState.addAttribute(
-            "val", odsBuilder.getIntegerAttr(odsBuilder.getI32Type(), val));
+    odsState.addAttribute("pos", odsBuilder.getI32IntegerAttr(pos));
+    odsState.addAttribute("val", odsBuilder.getI32IntegerAttr(val));
 }
 
 void AddOp::build(
-        ::mlir::OpBuilder&      odsBuilder,
+        ::mlir::OpBuilder& odsBuilder,
         ::mlir::OperationState& odsState,
-        mlir::Value             lhs,
-        int                     rhs) {
-    if (lhs.getType().isa<CellType>()) {
+        mlir::Value lhs,
+        mlir::Value rhs) {
+    if (lhs.getType().isa<CellType>() && rhs.getType().isa<IntegerType>()) {
+        auto cur_type = lhs.getType().cast<CellType>();
+        rhs.getDefiningOp()->getResult(0);
+        auto new_type = CellType::get(
+                cur_type.getContext(),
+                cur_type.getPos(),
+                cur_type.getVal() +
+                        llvm::cast<arith::ConstantIntOp>(rhs.getDefiningOp())
+                                .value());
 
-       
-        // printf("%p: %p", lhs.getContext(), odsBuilder.getContext());
-       
-
+        odsState.addTypes(new_type);
+        odsState.addOperands({lhs, rhs});
     } else {
         llvm_unreachable("");
     }
 }
 
-// void AddOp::build(
-//         ::mlir::OpBuilder&      odsBuilder,
-//         ::mlir::OperationState& odsState,
-//         mlir::Type              lhs,
-//         int                     rhs) {
-//     if (lhs.isa<CellType>()) {
-//         auto cell_lhs = lhs.cast<CellType>();
-//         auto new_type = CellType::get(
-//                 cell_lhs.getContext(),
-//                 cell_lhs.getPos(),
-//                 cell_lhs.getVal() + 1);
-//         odsState.addTypes(new_type);
+void ShrOp::build(
+        ::mlir::OpBuilder& odsBuilder,
+        ::mlir::OperationState& odsState,
+        mlir::Value lhs,
+        mlir::Value rhs) {
+    if (lhs.getType().isa<CellType>() && rhs.getType().isa<IntegerType>()) {
+        auto cur_type = lhs.getType().cast<CellType>();
+        rhs.getDefiningOp()->getResult(0);
+        auto new_type = CellType::get(
+                cur_type.getContext(),
+                cur_type.getPos() +
+                        llvm::cast<arith::ConstantIntOp>(rhs.getDefiningOp())
+                                .value(),
+                cur_type.getVal());
 
-//         auto operands_rhs = odsBuilder.create<mlir::arith::ConstantIntOp>(
-//                 odsBuilder.getUnknownLoc(), 1, 32);
-//         auto operands_lhs =
-//         odsBuilder.create<CellOp>(odsBuilder.getUnknownLoc(),
-//         cell_lhs.getPos(), cell_lhs.getVal());
-
-//         odsState.addOperands({operands_lhs, operands_rhs});
-
-//     } else {
-//         llvm_unreachable("Type should be CellType");
-//     }
-// }
+        odsState.addTypes(new_type);
+        odsState.addOperands({lhs, rhs});
+    } else {
+        llvm_unreachable("");
+    }
+}

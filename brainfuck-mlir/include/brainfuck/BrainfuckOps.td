@@ -29,7 +29,7 @@ def Brainfuck_AddOp : Brainfuck_Op<"add", []> {
         let assemblyFormat = "$lhs `,` $rhs attr-dict `:` `(` type($lhs) `,` type($rhs) `)` `->` type($output)";
         
         let builders = [
-                OpBuilder<(ins "mlir::Value":$lhs, "int":$rhs)>
+                OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs)>
         ];
 }
 
@@ -39,10 +39,9 @@ def Brainfuck_ShrOp : Brainfuck_Op<"shr", []> {
         let arguments = (ins Brainfuck_CellType:$lhs, I32:$rhs);
         let results = (outs Brainfuck_CellType:$output);
         let assemblyFormat = "$lhs `,` $rhs attr-dict `:` `(` type($lhs) `,` type($rhs) `)` `->` type($output)";
-
         
         let builders = [
-                OpBuilder<(ins "mlir::Value":$lhs, "int":$rhs)>
+                OpBuilder<(ins "mlir::Value":$lhs, "mlir::Value":$rhs)>
         ];
 }
 

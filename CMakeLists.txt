@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
 set(CMAKE_C_COMPILER clang-16)
 set(CMAKE_CXX_COMPILER clang++-16)
-
+add_link_options($<$<CONFIG:RELEASE>:-s>)
 project(lightning LANGUAGES CXX C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "") # works
