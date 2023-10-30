@@ -1,3 +1,4 @@
+#include <cassert>
 #include <cstddef>
 #include <cstdlib>
 #include <fstream>
@@ -37,7 +38,10 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/TypeRange.h"
+#include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
+#include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Verifier.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
@@ -58,6 +62,53 @@ struct Loop {
     mlir::Block *Entry, *Body, *Exit;
 };
 using namespace mlir::lightning::brainfuck;
+
+mlir::Location getLoc(mlir::OpBuilder& builder) {
+    return builder.getUnknownLoc();
+}
+
+// while( lhs.getVal() != 0 ) { ... }
+void while_op_start(
+        mlir::OpBuilder&           builder,
+        Loop*                      loop,
+        CellOp                     lhs,
+        mlir::arith::ConstantIntOp Zero) {
+    loop->Entry = builder.getInsertionBlock();
+
+    llvm::SmallVector<mlir::Type, 2>  Types{lhs.getType(), Zero.getType()};
+    llvm::SmallVector<mlir::Value, 2> Operands{lhs, Zero};
+
+    auto loc = getLoc(builder);
+    auto whileOp = builder.create<mlir::scf::WhileOp>(loc, Types, Operands);
+    auto Before =
+            builder.createBlock(&whileOp.getBefore(), {}, Types, {loc, loc});
+
+    auto After =
+            builder.createBlock(&whileOp.getAfter(), {}, Types, {loc, loc});
+    builder.setInsertionPointToStart(&whileOp.getBefore().front());
+
+    auto NE_ZERO = builder.create<mlir::arith::CmpIOp>(
+            getLoc(builder),
+            mlir::arith::CmpIPredicate::ne,
+            builder.create<mlir::arith::ConstantIntOp>(loc, lhs.getVal(), 32),
+            Zero);
+
+    builder.create<mlir::scf::ConditionOp>(
+            loc, NE_ZERO, Before->getArguments());
+
+    builder.setInsertionPointToStart(After);
+}
+
+void while_op_end(
+        mlir::OpBuilder&           builder,
+        Loop*                      loop,
+        CellOp                     lhs,
+        mlir::arith::ConstantIntOp Zero) {
+    auto Entry = loop->Entry;
+    auto loc = getLoc(builder);
+    builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{lhs, Zero});
+    builder.setInsertionPointToEnd(Entry);
+}
 
 mlir::OwningOpRef<mlir::ModuleOp> parse_code(
         mlir::MLIRContext& context,
@@ -84,6 +135,7 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
 
     auto const_zero = builder.create<mlir::arith::ConstantIntOp>(
             builder.getUnknownLoc(), 0, 32);
+    const_zero.getType();
     std::stack<Loop, llvm::SmallVector<Loop>> loops;
     Loop                                      ThisLoop;
 
@@ -119,10 +171,7 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
                     cur_cell.getPos() - 1,
                     cur_cell.getVal());
         } else if (ch == '[') {
-            ThisLoop.Body = builder.createBlock(thisBlock);
-            builder.setInsertionPointToStart(ThisLoop.Body);
-
-
+            while_op_start(builder, &ThisLoop, cur_cell, const_zero);
             loops.push(ThisLoop);
         } else if (ch == ']') {
             if (loops.empty()) {
@@ -132,8 +181,8 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
 
             ThisLoop = loops.top();
             loops.pop();
-        //     builder.setInsertionPointToEnd(ThisLoop.Body);
-            builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+            //     builder.setInsertionPointToEnd(ThisLoop.Body);
+            while_op_end(builder, &ThisLoop, cur_cell, const_zero);
         }
     }
 
