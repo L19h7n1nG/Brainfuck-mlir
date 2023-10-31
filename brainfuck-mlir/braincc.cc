@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -10,6 +11,7 @@
 #include <string_view>
 #include <vector>
 
+#include "brainfuck/BrainfuckTypeInterfaces.h"
 #include "brainfuck/BrainfuckTypes.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -71,20 +73,35 @@ mlir::Location getLoc(mlir::OpBuilder& builder) {
 void while_op_start(
         mlir::OpBuilder&           builder,
         Loop*                      loop,
-        CellOp                     lhs,
+        CellOp&                    lhs,
         mlir::arith::ConstantIntOp Zero) {
     loop->Entry = builder.getInsertionBlock();
 
-    llvm::SmallVector<mlir::Type, 2>  Types{lhs.getType(), Zero.getType()};
+    auto loc = getLoc(builder);
+
+    lhs = builder.create<CellOp>(
+            builder.getUnknownLoc(),
+            CellLikeType::kDynamic,
+            CellLikeType::kDynamic);
+
+    auto ResTy = CellType::get(
+            builder.getContext(),
+            CellLikeType::kDynamic,
+            CellLikeType::kDynamic);
+
+    lhs.getType().dump();
+
+    llvm::SmallVector<mlir::Type, 2>  Types{ResTy, Zero.getType()};
     llvm::SmallVector<mlir::Value, 2> Operands{lhs, Zero};
 
-    auto loc = getLoc(builder);
     auto whileOp = builder.create<mlir::scf::WhileOp>(loc, Types, Operands);
+
     auto Before =
             builder.createBlock(&whileOp.getBefore(), {}, Types, {loc, loc});
 
     auto After =
             builder.createBlock(&whileOp.getAfter(), {}, Types, {loc, loc});
+
     builder.setInsertionPointToStart(&whileOp.getBefore().front());
 
     auto NE_ZERO = builder.create<mlir::arith::CmpIOp>(
@@ -93,6 +110,7 @@ void while_op_start(
             builder.create<mlir::arith::ConstantIntOp>(loc, lhs.getVal(), 32),
             Zero);
 
+    NE_ZERO->dump();
     builder.create<mlir::scf::ConditionOp>(
             loc, NE_ZERO, Before->getArguments());
 
@@ -102,12 +120,30 @@ void while_op_start(
 void while_op_end(
         mlir::OpBuilder&           builder,
         Loop*                      loop,
-        CellOp                     lhs,
+        CellOp&                    lhs,
         mlir::arith::ConstantIntOp Zero) {
     auto Entry = loop->Entry;
     auto loc = getLoc(builder);
     builder.create<mlir::scf::YieldOp>(loc, mlir::ValueRange{lhs, Zero});
     builder.setInsertionPointToEnd(Entry);
+}
+
+auto getCellAttrs(CellOp op, std::function<llvm::StringRef()> f) {
+    auto sattr = f();
+    if (sattr.equals("unknown")) {
+        return CellLikeType::kDynamic;
+    } else {
+        int res = CellLikeType::kDynamic;
+        sattr.getAsInteger(10, res);
+        return res;
+    }
+}
+
+int update(int original_val, int sum) {
+    if (original_val == CellLikeType::kDynamic) {
+        return CellLikeType::kDynamic;
+    } else
+        return original_val + sum;
 }
 
 mlir::OwningOpRef<mlir::ModuleOp> parse_code(
@@ -123,52 +159,39 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
             builder.getFunctionType(std::nullopt, std::nullopt));
     theModule.push_back(mainFunc);
     auto entry = mainFunc.addEntryBlock();
-    builder.setInsertionPointToEnd(entry);
-    builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+
     builder.setInsertionPointToStart(entry);
 
     auto cur_cell = builder.create<CellOp>(builder.getUnknownLoc(), 0, 0);
-    auto const_negaone = builder.create<mlir::arith::ConstantIntOp>(
-            builder.getUnknownLoc(), -1, 32);
-    auto const_one = builder.create<mlir::arith::ConstantIntOp>(
-            builder.getUnknownLoc(), 1, 32);
 
     auto const_zero = builder.create<mlir::arith::ConstantIntOp>(
             builder.getUnknownLoc(), 0, 32);
-    const_zero.getType();
+
     std::stack<Loop, llvm::SmallVector<Loop>> loops;
     Loop                                      ThisLoop;
 
-    mlir::Block* thisBlock = builder.getInsertionBlock();
     for (auto&& ch : code) {
         if (ch == '+') {
-            //     builder.create<AddOp>(builder.getUnknownLoc(), cur_cell,
-            //     const_one);
             cur_cell = builder.create<CellOp>(
                     builder.getUnknownLoc(),
                     cur_cell.getPos(),
-                    cur_cell.getVal() + 1);
+                    update(cur_cell.getVal(), 1));
 
         } else if (ch == '-') {
-            //     builder.create<AddOp>(
-            //             builder.getUnknownLoc(), cur_cell, const_negaone);
             cur_cell = builder.create<CellOp>(
                     builder.getUnknownLoc(),
                     cur_cell.getPos(),
-                    cur_cell.getVal() - 1);
+                    update(cur_cell.getVal(), -1));
+
         } else if (ch == '>') {
-            //     builder.create<ShrOp>(builder.getUnknownLoc(), cur_cell,
-            //     const_one);
             cur_cell = builder.create<CellOp>(
                     builder.getUnknownLoc(),
-                    cur_cell.getPos() + 1,
+                    update(cur_cell.getPos(), 1),
                     cur_cell.getVal());
         } else if (ch == '<') {
-            //     builder.create<ShrOp>(
-            //             builder.getUnknownLoc(), cur_cell, const_negaone);
             cur_cell = builder.create<CellOp>(
                     builder.getUnknownLoc(),
-                    cur_cell.getPos() - 1,
+                    update(cur_cell.getPos(), -1),
                     cur_cell.getVal());
         } else if (ch == '[') {
             while_op_start(builder, &ThisLoop, cur_cell, const_zero);
@@ -181,10 +204,12 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
 
             ThisLoop = loops.top();
             loops.pop();
-            //     builder.setInsertionPointToEnd(ThisLoop.Body);
             while_op_end(builder, &ThisLoop, cur_cell, const_zero);
         }
     }
+
+    builder.setInsertionPointToEnd(entry);
+    builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
 
     if (failed(mlir::verify(theModule))) {
         theModule.emitError("module verification error");
@@ -214,15 +239,6 @@ int main(int argc, char** argv) {
 
     if (module)
         module->dump();
-
-    //     mlir::DialectRegistry registry;
-    //     regisrtyDialects<
-    //             mlir::lightning::brainfuck::BrainfuckDialect,
-    //             mlir::func::FuncDialect,
-    //             mlir::arith::ArithDialect>(registry);
-
-    //     return mlir::asMainReturnCode(mlir::MlirOptMain(
-    //             argc, argv, "Brainfuck optimizer driver\n", registry));
 
     return 0;
 }

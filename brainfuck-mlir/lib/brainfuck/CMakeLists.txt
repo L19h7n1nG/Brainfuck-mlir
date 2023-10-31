@@ -10,6 +10,7 @@ add_mlir_dialect_library(
 
     DEPENDS
     MLIRBrainfuckOpsIncGen
+    MLIRBrainfuckTypeInterfacesIncGen
 
     LINK_LIBS PUBLIC 
 	MLIRIR
