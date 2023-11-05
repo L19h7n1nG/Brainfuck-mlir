@@ -63,3 +63,10 @@ void CellOp::build(
 llvm::ArrayRef<int> CellType::getCell() const {
     return llvm::ArrayRef<int>{getPos(), getVal()};
 }
+
+void CellOp::build(
+        ::mlir::OpBuilder& odsBuilder,
+        ::mlir::OperationState& odsState,
+        mlir::lightning::brainfuck::CellType input) {
+    build(odsBuilder, odsState, input.getPos(), input.getVal());
+}

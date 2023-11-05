@@ -71,27 +71,29 @@ mlir::Location getLoc(mlir::OpBuilder& builder) {
 
 // while( lhs.getVal() != 0 ) { ... }
 void while_op_start(
-        mlir::OpBuilder&           builder,
-        Loop*                      loop,
-        CellOp&                    lhs,
+        mlir::OpBuilder& builder,
+        Loop* loop,
+        CellOp& lhs,
         mlir::arith::ConstantIntOp Zero) {
     loop->Entry = builder.getInsertionBlock();
 
     auto loc = getLoc(builder);
 
-    lhs = builder.create<CellOp>(
-            builder.getUnknownLoc(),
+    auto UnknownType = CellType::get(
+            builder.getContext(),
             CellLikeType::kDynamic,
             CellLikeType::kDynamic);
+
+    auto erased = builder.create<EraseOp>(loc, UnknownType, lhs);
+
+    lhs = builder.create<CellOp>(builder.getUnknownLoc(), erased.getType());
 
     auto ResTy = CellType::get(
             builder.getContext(),
             CellLikeType::kDynamic,
             CellLikeType::kDynamic);
 
-    lhs.getType().dump();
-
-    llvm::SmallVector<mlir::Type, 2>  Types{ResTy, Zero.getType()};
+    llvm::SmallVector<mlir::Type, 2> Types{ResTy, Zero.getType()};
     llvm::SmallVector<mlir::Value, 2> Operands{lhs, Zero};
 
     auto whileOp = builder.create<mlir::scf::WhileOp>(loc, Types, Operands);
@@ -110,7 +112,6 @@ void while_op_start(
             builder.create<mlir::arith::ConstantIntOp>(loc, lhs.getVal(), 32),
             Zero);
 
-    NE_ZERO->dump();
     builder.create<mlir::scf::ConditionOp>(
             loc, NE_ZERO, Before->getArguments());
 
@@ -118,9 +119,9 @@ void while_op_start(
 }
 
 void while_op_end(
-        mlir::OpBuilder&           builder,
-        Loop*                      loop,
-        CellOp&                    lhs,
+        mlir::OpBuilder& builder,
+        Loop* loop,
+        CellOp& lhs,
         mlir::arith::ConstantIntOp Zero) {
     auto Entry = loop->Entry;
     auto loc = getLoc(builder);
@@ -148,7 +149,7 @@ int update(int original_val, int sum) {
 
 mlir::OwningOpRef<mlir::ModuleOp> parse_code(
         mlir::MLIRContext& context,
-        std::string_view   code) {
+        std::string_view code) {
     mlir::OpBuilder builder(&context);
 
     auto theModule = mlir::ModuleOp::create(builder.getUnknownLoc());
@@ -168,7 +169,7 @@ mlir::OwningOpRef<mlir::ModuleOp> parse_code(
             builder.getUnknownLoc(), 0, 32);
 
     std::stack<Loop, llvm::SmallVector<Loop>> loops;
-    Loop                                      ThisLoop;
+    Loop ThisLoop;
 
     for (auto&& ch : code) {
         if (ch == '+') {
@@ -222,8 +223,8 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         return 0;
     }
-    auto              filepath = argv[1];
-    std::ifstream     ifs(filepath);
+    auto filepath = argv[1];
+    std::ifstream ifs(filepath);
     std::stringstream buffer;
     buffer << ifs.rdbuf();
 
@@ -237,8 +238,7 @@ int main(int argc, char** argv) {
     mlir::OwningOpRef<mlir::ModuleOp> module =
             parse_code(context, buffer.str());
 
-    if (module)
-        module->dump();
+    if (module) module->dump();
 
     return 0;
 }

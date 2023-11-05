@@ -19,11 +19,18 @@ def Brainfuck_CellOp: Brainfuck_Op<"cell", []> {
         let builders = [
                 OpBuilder<(ins "int":$pos, "int":$val)>,
                 OpBuilder<(ins "llvm::ArrayRef<int>":$input)>,
+                OpBuilder<(ins "mlir::lightning::brainfuck::CellType":$input)>
         ];
 }
 
 
+def Brainfuck_EraseOp: Brainfuck_Op<"erase", []> {
+        let summary = "Erase Op";
+        let arguments = (ins Brainfuck_CellType:$input);
+        let results = (outs Brainfuck_CellType:$output);
+        let assemblyFormat = "$input attr-dict `:` type($input) `to` type($output)";
 
+}
 
 
 #endif //
