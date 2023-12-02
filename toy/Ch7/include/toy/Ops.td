@@ -450,4 +450,24 @@ def TransposeOp : Toy_Op<"transpose",
   let hasVerifier = 1;
 }
 
+
+
+def MatMulOp: Toy_Op<"mm",
+  [NoMemoryEffect, DeclareOpInterfaceMethods<ShapeInferenceOpInterface>]> {
+
+    let summary = "mm operation";
+
+    let arguments = (ins AnyTensor:$lhs, AnyTensor:$rhs);
+    let results  = (outs AnyTensor);
+
+    let hasVerifier = 1;
+    
+    let builders = [
+    OpBuilder<(ins "Value":$lhs,"Value":$rhs)>
+  ];
+
+    let hasCanonicalizer = 1;
+
+
+}
 #endif // TOY_OPS

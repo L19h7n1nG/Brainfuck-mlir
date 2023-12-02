@@ -60,4 +60,11 @@ def RedundantReshapeOptPattern : Pat<
   (ReshapeOp:$res $arg), (replaceWithValue $arg),
   [(TypesAreIdentical $res, $arg)]>;
 
+
+
+
+
+
+
+
 #endif // TOY_COMBINE
