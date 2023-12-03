@@ -12,12 +12,16 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/APFloat.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/ValueRange.h"
@@ -119,12 +123,6 @@ static void lowerOpToLoops(
     // Replace this operation with the generated alloc.
     rewriter.replaceOp(op, alloc);
 }
-
-static void lowerOpToLoopsMatMul(
-        Operation*       op,
-        ValueRange       operands,
-        PatternRewriter& rewriter,
-        LoopIterationFn  processIteration) {}
 
 namespace {
 //===----------------------------------------------------------------------===//
@@ -363,6 +361,116 @@ struct MatMulOpLowering : public ConversionPattern {
             ArrayRef<Value>            operands,
             ConversionPatternRewriter& rewriter) const final {
         auto loc = op->getLoc();
+        auto tensorType = (*op->result_type_begin()).cast<RankedTensorType>();
+        auto tensorElemType = tensorType.getElementType();
+        auto memRefType = convertTensorToMemRef(tensorType);
+
+        auto alloc = insertAllocAndDealloc(memRefType, loc, rewriter);
+
+        llvm::SmallVector<int64_t, 4> lowerBounds(tensorType.getRank(), 0);
+        llvm::SmallVector<int64_t, 4> steps(tensorType.getRank(), 1);
+
+        llvm::SmallVector<int64_t, 1> CommDim{op->getOperand(0)
+                                                      .getType()
+                                                      .cast<RankedTensorType>()
+                                                      .getShape()[1]};
+
+        affine::buildAffineLoopNest(
+                rewriter,
+                loc,
+                lowerBounds,
+                tensorType.getShape(),
+                steps,
+                [&](OpBuilder& nestedBuidler, Location loc, ValueRange ivs) {
+                    const llvm::APFloat zero(0.0);
+                    nestedBuidler.create<affine::AffineStoreOp>(
+                            loc,
+                            rewriter.create<arith::ConstantFloatOp>(
+                                    loc, zero, tensorElemType.cast<FloatType>()),
+                            alloc,
+                            ivs);
+                });
+        SmallVector<int64_t, 4> loopShape;
+        SmallVector<int64_t, 4> loopLowerBounds(3, 0);
+        SmallVector<int64_t, 4> loopsteps(3, 1);
+
+        loopShape.push_back(op->getOperand(0)
+                                    .getType()
+                                    .cast<TensorType>()
+                                    .getShape()
+                                    .vec()[0]);
+        loopShape.push_back(op->getOperand(0)
+                                    .getType()
+                                    .cast<TensorType>()
+                                    .getShape()
+                                    .vec()[1]);
+        loopShape.push_back(op->getOperand(1)
+                                    .getType()
+                                    .cast<TensorType>()
+                                    .getShape()
+                                    .vec()[1]);
+        affine::buildAffineLoopNest(
+                rewriter,
+                loc,
+                loopLowerBounds,
+                loopShape,
+                loopsteps,
+                [&](OpBuilder& nestedBuilder, Location loc, ValueRange ivs) {
+                    toy::MatMulOpAdaptor matMulAdaptor(operands);
+                    Value                lhs = matMulAdaptor.getLhs();
+                    Value                rhs = matMulAdaptor.getRhs();
+
+                    SmallVector<AffineExpr, 2> lhsExpr, rhsExpr, resExpr;
+
+                    lhsExpr.push_back(
+                            getAffineDimExpr(0, nestedBuilder.getContext()));
+                    lhsExpr.push_back(
+                            getAffineDimExpr(1, nestedBuilder.getContext()));
+                    rhsExpr.push_back(
+                            getAffineDimExpr(1, nestedBuilder.getContext()));
+                    rhsExpr.push_back(
+                            getAffineDimExpr(2, nestedBuilder.getContext()));
+                    resExpr.push_back(
+                            getAffineDimExpr(0, nestedBuilder.getContext()));
+                    resExpr.push_back(
+                            getAffineDimExpr(2, nestedBuilder.getContext()));
+
+                    auto loadedLhs = nestedBuilder.create<affine::AffineLoadOp>(
+                            loc,
+                            lhs,
+                            AffineMap::get(
+                                    3, 0, lhsExpr, nestedBuilder.getContext()),
+                            ivs);
+                    auto loadedRhs = nestedBuilder.create<affine::AffineLoadOp>(
+                            loc,
+                            rhs,
+                            AffineMap::get(
+                                    3, 0, rhsExpr, nestedBuilder.getContext()),
+                            ivs);
+                    auto mulResult = nestedBuilder.create<arith::MulFOp>(
+                            loc, loadedLhs, loadedRhs);
+                    auto loadedResult =
+                            nestedBuilder.create<affine::AffineLoadOp>(
+                                    loc,
+                                    alloc,
+                                    AffineMap::get(
+                                            3,
+                                            0,
+                                            resExpr,
+                                            nestedBuilder.getContext()),
+                                    ivs);
+                    auto addResult = nestedBuilder.create<arith::AddFOp>(
+                            loc, mulResult, loadedResult);
+                    nestedBuilder.create<affine::AffineStoreOp>(
+                            loc,
+                            addResult,
+                            alloc,
+                            AffineMap::get(
+                                    3, 0, resExpr, nestedBuilder.getContext()),
+                            ivs);
+                });
+        rewriter.replaceOp(op, alloc);
+        return success();
     }
 };
 
@@ -428,7 +536,8 @@ void ToyToAffineLoweringPass::runOnOperation() {
                  MulOpLowering,
                  PrintOpLowering,
                  ReturnOpLowering,
-                 TransposeOpLowering>(&getContext());
+                 TransposeOpLowering,
+                 MatMulOpLowering>(&getContext());
 
     // With the target and rewrite patterns defined, we can now attempt the
     // conversion. The conversion will signal failure if any of our `illegal`

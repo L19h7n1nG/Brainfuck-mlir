@@ -291,7 +291,7 @@ def PrintOp : Toy_Op<"print"> {
 
   // The print operation takes an input tensor to print.
   // We also allow a F64MemRef to enable interop during partial lowering.
-  let arguments = (ins AnyTypeOf<[F64Tensor, F64MemRef]>:$input);
+  let arguments = (ins AnyTypeOf<[AnyRankedTensor, AnyRankedOrUnrankedMemRef]>:$input);
 
   let assemblyFormat = "$input attr-dict `:` type($input)";
 }

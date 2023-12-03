@@ -99,13 +99,14 @@ void ReshapeOp::getCanonicalizationPatterns(
                  FoldConstantReshapeOptPattern>(context);
 }
 
-struct AssociativeMatMul : public mlir::OpRewritePattern<MatMulOp> {
-    AssociativeMatMul(mlir::MLIRContext* ctx)
+struct SimplifyChainMatMul : public mlir::OpRewritePattern<MatMulOp> {
+    SimplifyChainMatMul(mlir::MLIRContext* ctx)
             : mlir::OpRewritePattern<MatMulOp>(ctx, 2) {}
 
     mlir::LogicalResult matchAndRewrite(
             MatMulOp               op,
             mlir::PatternRewriter& rewriter) const override {
+        // A @ B @ C = A @ (B @ C)
         mlir::Value MatmulLhs = op.getOperands()[0];
         mlir::Value MatmulRhs = op.getOperands()[1];
         MatMulOp    matmulLhsOp = MatmulLhs.getDefiningOp<MatMulOp>();
@@ -125,5 +126,5 @@ struct AssociativeMatMul : public mlir::OpRewritePattern<MatMulOp> {
 void MatMulOp::getCanonicalizationPatterns(
         RewritePatternSet& results,
         MLIRContext*       context) {
-    results.add<AssociativeMatMul>(context);
+    results.add<SimplifyChainMatMul>(context);
 }
